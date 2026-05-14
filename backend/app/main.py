@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import orjson
@@ -33,7 +34,7 @@ REQ_LATENCY = Histogram(
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.info("startup", env=settings.app_env, version=__version__)
     yield
     await close_redis()
@@ -57,7 +58,10 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def prometheus_middleware(request: Request, call_next):
+async def prometheus_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     method = request.method
     path = request.url.path
     with REQ_LATENCY.labels(method, path).time():

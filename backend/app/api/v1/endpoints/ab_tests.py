@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession
@@ -56,7 +57,7 @@ async def start_test(test_id: UUID, db: DbSession) -> ABTest:
         )
     test.status = ABTestStatus.RUNNING
     if test.started_at is None:
-        test.started_at = datetime.now(timezone.utc)
+        test.started_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(test, attribute_names=["variants"])
     return test
@@ -129,7 +130,7 @@ async def get_results(test_id: UUID, db: DbSession) -> ABTestResults:
         winner_uuid = UUID(evaluation.recommended_winner)
         if test.status == ABTestStatus.RUNNING:
             test.status = ABTestStatus.DECIDED
-            test.decided_at = datetime.now(timezone.utc)
+            test.decided_at = datetime.now(UTC)
             test.winner_variant_id = winner_uuid
             await db.commit()
 
@@ -156,7 +157,7 @@ async def get_results(test_id: UUID, db: DbSession) -> ABTestResults:
     )
 
 
-async def _get_test(db, test_id: UUID) -> ABTest:
+async def _get_test(db: AsyncSession, test_id: UUID) -> ABTest:
     stmt = select(ABTest).where(ABTest.id == test_id).options(selectinload(ABTest.variants))
     test = (await db.execute(stmt)).scalar_one_or_none()
     if test is None:

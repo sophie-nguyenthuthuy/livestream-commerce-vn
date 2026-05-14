@@ -30,7 +30,7 @@ class ScriptVariant(APIModel):
     title: str
     body: str
     estimated_duration_sec: int
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
 
 
 class ScriptGenerateResponse(APIModel):
@@ -61,5 +61,5 @@ class ScriptSave(APIModel):
     title: str = Field(min_length=1, max_length=255)
     body: str = Field(min_length=1)
     speech_duration_sec: int = Field(ge=0, le=600)
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     model: str | None = None

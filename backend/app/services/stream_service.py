@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -13,7 +14,7 @@ from app.schemas.stream import ConversionFunnel, StreamEvent
 
 
 def _floor_minute(ts: datetime) -> datetime:
-    return ts.astimezone(timezone.utc).replace(second=0, microsecond=0)
+    return ts.astimezone(UTC).replace(second=0, microsecond=0)
 
 
 async def ingest_events(
@@ -26,7 +27,7 @@ async def ingest_events(
         return 0
 
     # Aggregate in memory first to keep round-trips bounded.
-    buckets: dict[datetime, dict] = {}
+    buckets: dict[datetime, dict[str, Any]] = {}
     for ev in events:
         bucket = _floor_minute(ev.occurred_at)
         agg = buckets.setdefault(

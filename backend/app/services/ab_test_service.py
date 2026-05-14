@@ -20,8 +20,8 @@ This avoids the classic mistake of declaring winners on the first 100 clicks.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import numpy as np
 from scipy import stats

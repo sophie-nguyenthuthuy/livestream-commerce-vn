@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -56,7 +56,7 @@ async def end_stream(stream_id: UUID, db: DbSession) -> Stream:
     if stream.status == StreamStatus.ENDED:
         return stream
     stream.status = StreamStatus.ENDED
-    stream.ended_at = datetime.now(timezone.utc)
+    stream.ended_at = datetime.now(UTC)
 
     rows = (
         (

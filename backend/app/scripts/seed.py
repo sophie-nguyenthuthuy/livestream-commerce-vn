@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import random
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -46,12 +46,12 @@ async def main() -> None:
         await db.commit()
 
         products = [
-            Product(id=uuid4(), name_normalized=_normalize(p["name"]), **p)
+            Product(id=uuid4(), name_normalized=_normalize(str(p["name"])), **p)
             for p in DEMO_PRODUCTS
         ]
         db.add_all(products)
 
-        start = datetime.now(timezone.utc).replace(second=0, microsecond=0) - timedelta(hours=1)
+        start = datetime.now(UTC).replace(second=0, microsecond=0) - timedelta(hours=1)
         stream = Stream(
             id=uuid4(),
             platform=Platform.TIKTOK_SHOP,
