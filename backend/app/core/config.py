@@ -34,12 +34,14 @@ class Settings(BaseSettings):
     s3_bucket: str = "thumbnails"
     s3_region: str = "ap-southeast-1"
 
-    # AI
-    anthropic_api_key: str | None = None
-    openai_api_key: str | None = None
-    ai_primary_provider: Literal["anthropic", "openai"] = "anthropic"
-    ai_model_anthropic: str = "claude-sonnet-4-6"
-    ai_model_openai: str = "gpt-4o"
+    # AI — self-hosted OSS LLM via OpenAI-compatible endpoint.
+    # Defaults: Ollama on localhost serving Qwen 2.5. For GPU production
+    # swap to vLLM/SGLang at the same base_url. No managed-API providers.
+    llm_base_url: str = "http://localhost:11434/v1"
+    llm_api_key: str | None = None
+    # 7b is the CPU/laptop dev default; production GPU should set
+    # LLM_MODEL=qwen2.5:32b-instruct in the deploy env.
+    llm_model: str = "qwen2.5:7b-instruct"
 
     # TikTok Shop
     tiktok_shop_app_key: str | None = None

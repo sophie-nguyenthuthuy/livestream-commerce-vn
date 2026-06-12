@@ -29,7 +29,13 @@ class ScriptGenerationError(RuntimeError):
 
 
 class ScriptService:
-    """Generate Vietnamese livestream scripts via Anthropic (primary) or OpenAI."""
+    """Generate Vietnamese livestream scripts via a self-hosted OSS LLM
+    (OpenAI-compatible endpoint — Ollama in dev, vLLM/SGLang in production).
+
+    All sensitive seller/creator copy and pricing intel stays inside the
+    operator's infrastructure; the project mandates OSS, self-hostable
+    models only (Qwen / Llama / DeepSeek), not managed APIs.
+    """
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -46,16 +52,7 @@ class ScriptService:
             n_variants=req.n_variants,
         )
 
-        provider = self.settings.ai_primary_provider
-        try:
-            if provider == "anthropic":
-                model, raw = await self._call_anthropic(user_prompt)
-            else:
-                model, raw = await self._call_openai(user_prompt)
-        except Exception as exc:
-            logger.warning("primary_provider_failed", provider=provider, error=str(exc))
-            model, raw = await self._call_fallback(provider, user_prompt)
-
+        model, raw = await self._call_llm(user_prompt)
         variants = self._parse_variants(raw, fallback_duration=req.target_duration_sec)
         return ScriptGenerateResponse(
             dialect=req.dialect,
@@ -69,7 +66,7 @@ class ScriptService:
         canonical = json.dumps(req.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(canonical.encode()).hexdigest()[:32]
 
-    # ---- providers ----
+    # ---- provider ----
 
     @retry(
         stop=stop_after_attempt(2),
@@ -77,66 +74,36 @@ class ScriptService:
         retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
         reraise=True,
     )
-    async def _call_anthropic(self, user_prompt: str) -> tuple[str, str]:
-        if not self.settings.anthropic_api_key:
-            raise ScriptGenerationError("ANTHROPIC_API_KEY not configured")
-        model = self.settings.ai_model_anthropic
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": self.settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "max_tokens": 2000,
-                    "system": SYSTEM_PROMPT,
-                    "messages": [{"role": "user", "content": user_prompt}],
-                },
-            )
-            r.raise_for_status()
-            data = r.json()
-        text = "".join(b["text"] for b in data["content"] if b["type"] == "text")
-        return model, text
+    async def _call_llm(self, user_prompt: str) -> tuple[str, str]:
+        """Call the configured OpenAI-compatible OSS endpoint."""
+        model = self.settings.llm_model
+        base_url = self.settings.llm_base_url.rstrip("/")
+        headers = {"content-type": "application/json"}
+        if self.settings.llm_api_key:
+            headers["Authorization"] = f"Bearer {self.settings.llm_api_key}"
 
-    @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
-        retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
-        reraise=True,
-    )
-    async def _call_openai(self, user_prompt: str) -> tuple[str, str]:
-        if not self.settings.openai_api_key:
-            raise ScriptGenerationError("OPENAI_API_KEY not configured")
-        model = self.settings.ai_model_openai
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             r = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.settings.openai_api_key}",
-                    "content-type": "application/json",
-                },
+                f"{base_url}/chat/completions",
+                headers=headers,
                 json={
                     "model": model,
                     "response_format": {"type": "json_object"},
+                    "temperature": 0.7,
+                    "max_tokens": 2000,
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": user_prompt},
                     ],
                 },
             )
-            r.raise_for_status()
+            if r.status_code >= 400:
+                logger.warning("llm_call_failed", status=r.status_code, body=r.text[:500])
+                raise ScriptGenerationError(
+                    f"OSS LLM endpoint {r.status_code}: {r.text[:200]}"
+                )
             data = r.json()
         return model, data["choices"][0]["message"]["content"]
-
-    async def _call_fallback(self, primary: str, prompt: str) -> tuple[str, str]:
-        if primary == "anthropic" and self.settings.openai_api_key:
-            return await self._call_openai(prompt)
-        if primary == "openai" and self.settings.anthropic_api_key:
-            return await self._call_anthropic(prompt)
-        raise ScriptGenerationError("no AI provider available")
 
     # ---- parsing ----
 
@@ -166,7 +133,6 @@ def _extract_json(text: str) -> Any:
     """Locate the first {...} JSON object in `text`. Models sometimes wrap in prose."""
     text = text.strip()
     if text.startswith("```"):
-        # ```json ... ```
         text = text.strip("`")
         if text.startswith("json"):
             text = text[4:]

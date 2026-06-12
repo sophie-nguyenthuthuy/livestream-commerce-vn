@@ -1,0 +1,2 @@
+# Placeholder so Next.js's `public/` directory exists for the Dockerfile
+# COPY step. Drop favicons / static assets here as the product grows.

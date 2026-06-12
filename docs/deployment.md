@@ -4,7 +4,8 @@
 
 ```bash
 cp .env.example .env
-# Set ANTHROPIC_API_KEY or OPENAI_API_KEY (at least one) for /scripts/generate to work.
+# Defaults point at the bundled Ollama service (no API key needed). For
+# production GPU, set LLM_BASE_URL to your vLLM/SGLang gateway URL.
 make up
 make migrate
 make seed

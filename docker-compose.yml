@@ -44,6 +44,32 @@ services:
       timeout: 3s
       retries: 10
 
+  # OSS LLM gateway. Dev/CPU default = Ollama. For GPU production swap
+  # to vLLM / SGLang serving the same /v1/chat/completions API.
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull qwen2.5:7b-instruct || true"]
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -53,12 +79,17 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-livestream}:${POSTGRES_PASSWORD:-livestream}@postgres:5432/${POSTGRES_DB:-livestream_vn}
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b-instruct}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -81,3 +112,4 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  ollama-data:
